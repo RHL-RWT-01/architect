@@ -43,6 +43,8 @@ function activate(context) {
         ArchitectPanel.createOrShow(context.extensionUri);
     });
     context.subscriptions.push(disposable);
+    // Register Sidebar View
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('architectura.view', new ArchitectSidebarProvider(context.extensionUri)));
     // Auto-update when active editor changes
     vscode.window.onDidChangeActiveTextEditor(editor => {
         if (editor && ArchitectPanel.currentPanel) {
@@ -128,9 +130,22 @@ class ArchitectPanel {
         const webview = this._panel.webview;
         this._panel.title = 'Architecture Diagram';
         this._panel.webview.html = this._getHtmlForWebview(webview, mermaidCode);
-        this._panel.webview.onDidReceiveMessage(message => {
+        this._panel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'scanWorkspace') {
                 this._scanWorkspace();
+            }
+            else if (message.command === 'openFile') {
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+                if (workspaceRoot) {
+                    const fullPath = vscode.Uri.file(require('path').join(workspaceRoot, message.filePath));
+                    try {
+                        const doc = await vscode.workspace.openTextDocument(fullPath);
+                        await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+                    }
+                    catch (e) {
+                        vscode.window.showErrorMessage(`Could not open file: ${message.filePath}`);
+                    }
+                }
             }
         }, null, this._disposables);
     }
@@ -143,79 +158,149 @@ class ArchitectPanel {
                 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
                 <style>
                     :root {
-                        --padding: 20px;
+                        --padding: 24px;
+                        --accent: var(--vscode-button-background);
+                        --bg: var(--vscode-editor-background);
+                        --fg: var(--vscode-editor-foreground);
+                        --border: var(--vscode-panel-border);
                     }
                     body {
                         font-family: var(--vscode-font-family);
-                        background-color: var(--vscode-editor-background);
-                        color: var(--vscode-editor-foreground);
-                        padding: var(--padding);
+                        background-color: var(--bg);
+                        color: var(--fg);
+                        padding: 0;
                         margin: 0;
+                        overflow: hidden;
+                        display: flex;
+                        flex-direction: column;
+                        height: 100vh;
                     }
                     .header {
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
-                        border-bottom: 1px solid var(--vscode-panel-border);
-                        padding-bottom: 10px;
-                        margin-bottom: 20px;
+                        padding: 12px var(--padding);
+                        background: var(--vscode-sideBar-background);
+                        border-bottom: 1px solid var(--border);
+                        flex-shrink: 0;
+                    }
+                    .header h1 {
+                        font-size: 14px;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                        margin: 0;
+                        opacity: 0.8;
                     }
                     button {
-                        background-color: var(--vscode-button-background);
+                        background-color: var(--accent);
                         color: var(--vscode-button-foreground);
                         border: none;
-                        padding: 8px 16px;
+                        padding: 6px 14px;
                         cursor: pointer;
-                        border-radius: 2px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: 600;
+                        transition: filter 0.2s;
                     }
                     button:hover {
-                        background-color: var(--vscode-button-hoverBackground);
+                        filter: brightness(1.2);
+                    }
+                    .mermaid-container {
+                        flex-grow: 1;
+                        overflow: auto;
+                        padding: var(--padding);
+                        display: flex;
+                        justify-content: center;
+                        background-image: 
+                            radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
+                        background-size: 24px 24px;
                     }
                     .mermaid {
-                        background-color: white;
-                        padding: 20px;
-                        border-radius: 8px;
-                        overflow: auto;
+                        background: white;
+                        padding: 40px;
+                        border-radius: 12px;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                        height: fit-content;
+                        min-width: 300px;
+                        color: #333;
                     }
                     #error {
                         color: var(--vscode-errorForeground);
                         display: none;
-                        padding: 10px;
-                        border: 1px solid var(--vscode-errorForeground);
-                        margin-top: 10px;
+                        padding: 12px;
+                        margin: 10px var(--padding);
+                        border-left: 3px solid var(--vscode-errorForeground);
+                        background: rgba(255,0,0,0.1);
+                        font-size: 12px;
                     }
                 </style>
             </head>
             <body>
                 <div class="header">
-                    <h1>Architecture Preview</h1>
-                    <button onclick="scan()">Scan Full Workspace</button>
+                    <h1>Architectura</h1>
+                    <button onclick="scan()">SCAN WORKSPACE</button>
                 </div>
                 <div id="error"></div>
-                <div class="mermaid" id="diagram">
-                    ${mermaidCode || 'graph TD\\n  A[Open a file to see diagram]'}
+                <div class="mermaid-container">
+                    <div class="mermaid" id="diagram">
+                        ${mermaidCode || 'graph TD\\n  A[Open a file to see diagram]'}
+                    </div>
                 </div>
                 <script>
                     const vscode = acquireVsCodeApi();
                     
+                    window.handleNodeClick = function(nodeId) {
+                        vscode.postMessage({ 
+                            command: 'openFile', 
+                            filePath: nodeId 
+                        });
+                    };
+
                     mermaid.initialize({ 
                         startOnLoad: true, 
-                        theme: 'default',
-                        securityLevel: 'loose'
+                        theme: 'neutral',
+                        securityLevel: 'loose',
+                        maxTextSize: 1000000,
+                        flowchart: {
+                            useMaxWidth: false,
+                            htmlLabels: true,
+                            curve: 'basis'
+                        }
                     });
 
                     function scan() {
                         vscode.postMessage({ command: 'scanWorkspace' });
                     }
 
-                    window.addEventListener('message', event => {
+                    window.addEventListener('message', async event => {
                         const message = event.data;
                         if (message.command === 'update') {
                             const container = document.getElementById('diagram');
                             container.removeAttribute('data-processed');
-                            container.innerHTML = message.mermaid;
+                            
+                            let code = message.mermaid;
+                            // Add click handlers to all nodes
+                            const nodeIds = [];
+                            const lines = code.split('\\n');
+                            lines.forEach(l => {
+                                const m = l.match(/^\\s*([^\\s\\[\\(\\{]+)/);
+                                if (m && !['graph', 'TD', 'click', 'subgraph', 'end'].includes(m[1].trim())) {
+                                    nodeIds.push(m[1].trim());
+                                }
+                            });
+                            
+                            nodeIds.forEach(id => {
+                                if (id.length > 0) {
+                                    code += \`\\n  click \${id} call handleNodeClick("\${id}")\`;
+                                }
+                            });
+
+                            container.innerText = code;
+                            
                             try {
-                                mermaid.contentLoaded();
+                                await mermaid.run({
+                                    nodes: [container]
+                                });
                                 document.getElementById('error').style.display = 'none';
                             } catch (err) {
                                 document.getElementById('error').innerText = err.message;
@@ -226,6 +311,50 @@ class ArchitectPanel {
                 </script>
             </body>
             </html>`;
+    }
+}
+class ArchitectSidebarProvider {
+    _extensionUri;
+    constructor(_extensionUri) {
+        this._extensionUri = _extensionUri;
+    }
+    resolveWebviewView(webviewView) {
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this._extensionUri]
+        };
+        const update = async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                const content = editor.document.getText();
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+                const graph = await parser_1.CodeParser.parseFile(content, editor.document.fileName, workspaceRoot);
+                const mermaid = parser_1.CodeParser.toMermaid(graph);
+                webviewView.webview.postMessage({ command: 'update', mermaid });
+            }
+        };
+        webviewView.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === 'scanWorkspace') {
+                vscode.commands.executeCommand('architect.generateDiagram');
+                if (ArchitectPanel.currentPanel) {
+                    // This is a shortcut for the demo
+                    ArchitectPanel.currentPanel._scanWorkspace();
+                }
+            }
+            else if (message.command === 'openFile') {
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+                if (workspaceRoot) {
+                    const fullPath = vscode.Uri.file(require('path').join(workspaceRoot, message.filePath));
+                    const doc = await vscode.workspace.openTextDocument(fullPath);
+                    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+                }
+            }
+        });
+        // Initial HTML load (empty state)
+        webviewView.webview.html = ArchitectPanel.currentPanel?._getHtmlForWebview(webviewView.webview, '');
+        vscode.window.onDidChangeActiveTextEditor(update);
+        vscode.workspace.onDidSaveTextDocument(update);
+        update();
     }
 }
 function deactivate() { }

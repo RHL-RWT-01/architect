@@ -1,13 +1,13 @@
 {
-    "name": "architect",
-    "displayName": "Architect",
+    "name": "architectura",
+    "displayName": "Architectura",
     "description": "Generate architecture diagrams from your code automatically.",
     "repository": {
         "type": "git",
-        "url": "https://github.com/architect-team/architect.git"
+        "url": "https://github.com/RHL-RWT-01/architect"
     },
-    "publisher": "architect-team",
-    "version": "0.0.1",
+    "publisher": "rahulrawat01",
+    "version": "0.0.3",
     "engines": {
         "vscode": "^1.85.0"
     },
@@ -24,7 +24,10 @@
         "mermaid",
         "dependency graph"
     ],
-    "activationEvents": [],
+    "activationEvents": [
+        "onWebviewView:architectura.view",
+        "onCommand:architect.generateDiagram"
+    ],
     "main": "./out/extension.js",
     "contributes": {
         "commands": [
@@ -36,16 +39,18 @@
         "viewsContainers": {
             "activitybar": [
                 {
-                    "id": "architect-explorer",
-                    "title": "Architect"
+                    "id": "architectura-column",
+                    "title": "Architectura",
+                    "icon": "resources/icon.png"
                 }
             ]
         },
         "views": {
-            "architect-explorer": [
+            "architectura-column": [
                 {
-                    "id": "architect.main",
-                    "name": "Architecture Preview"
+                    "id": "architectura.view",
+                    "name": "Architecture Preview",
+                    "type": "webview"
                 }
             ]
         }
